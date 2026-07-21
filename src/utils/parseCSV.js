@@ -13,17 +13,30 @@ const LANG_NAMES = {
   ar: 'Arabic', ru: 'Russian', tr: 'Turkish',
 }
 
+function parseTrafficType(row) {
+  // Prefer first-touch UTM (what originally brought them), fall back to last-touch
+  const med = row._waitlist_first_utm_medium || row._waitlist_utm_medium || ''
+  const src = row._waitlist_first_utm_source || row._waitlist_utm_source || ''
+  const camp = row._waitlist_first_utm_campaign || row._waitlist_utm_campaign || ''
+  const ref = row._waitlist_first_referrer_host || row._waitlist_referrer_host || ''
+
+  if (med === 'paid' && camp) return 'paid'
+  if (src === 'ig' && med === 'social') return 'ig-organic'
+  if (ref.includes('google')) return 'google'
+  if (ref.includes('linkedin') || ref.includes('com.linkedin')) return 'linkedin'
+  if (ref.includes('instagram') || ref.includes('l.instagram')) return 'ig-organic'
+  if (ref.includes('facebook') || ref.includes('fb.com')) return 'facebook'
+  return 'direct'
+}
+
 function parseSource(row) {
-  const src = row._waitlist_utm_source || row._waitlist_first_utm_source || ''
-  const ref = row._waitlist_referrer_host || row._waitlist_first_referrer_host || ''
-  if (src === 'ig' || ref.includes('instagram') || ref.includes('l.instagram')) return 'Instagram'
-  if (ref.includes('linkedin') || ref.includes('com.linkedin')) return 'LinkedIn'
-  if (ref.includes('facebook') || ref.includes('fb.com')) return 'Facebook'
-  if (ref.includes('google')) return 'Google'
-  if (ref.includes('tiktok')) return 'TikTok'
-  if (ref.includes('twitter') || ref.includes('t.co') || ref.includes('x.com')) return 'X / Twitter'
-  if (src || ref) return src || ref
-  return 'Direct / Organic'
+  const type = parseTrafficType(row)
+  if (type === 'paid') return 'Instagram Paid'
+  if (type === 'ig-organic') return 'Instagram Organic'
+  if (type === 'google') return 'Google'
+  if (type === 'linkedin') return 'LinkedIn'
+  if (type === 'facebook') return 'Facebook'
+  return 'Direct / Type-in'
 }
 
 function parseDevice(row) {
@@ -56,6 +69,7 @@ export function parseWaitlistCSV(file) {
           surveySubmitted: !!r._waitlist_survey_submitted_at,
           cansPerMonth: r._waitlist_cans_per_month ? parseInt(r._waitlist_cans_per_month, 10) : null,
           ballsPerYear: r._waitlist_balls_per_year ? parseInt(r._waitlist_balls_per_year, 10) : null,
+          trafficType: parseTrafficType(r),
           source: parseSource(r),
           device: parseDevice(r),
           lang: parseLang(r),
@@ -63,7 +77,7 @@ export function parseWaitlistCSV(file) {
           langFlag: FLAG_MAP[parseLang(r)] || '🌐',
           timezone: r._waitlist_browser_timezone || '',
           formContext: r._waitlist_form_context || '',
-          utmCampaign: r._waitlist_utm_campaign || r._waitlist_first_utm_campaign || '',
+          campaignId: r._waitlist_first_utm_campaign || r._waitlist_utm_campaign || '',
           referrerHost: r._waitlist_referrer_host || r._waitlist_first_referrer_host || '',
         }))
 
@@ -79,19 +93,55 @@ export function computeStats(rows) {
   const confirmed = rows.filter(r => r.confirmationSent).length
   const withSurvey = rows.filter(r => r.surveySubmitted).length
 
-  // Growth over time — daily buckets
+  // Paid vs organic counts
+  const paid = rows.filter(r => r.trafficType === 'paid').length
+  const igOrganic = rows.filter(r => r.trafficType === 'ig-organic').length
+  const google = rows.filter(r => r.trafficType === 'google').length
+  const direct = rows.filter(r => r.trafficType === 'direct').length
+  const other = total - paid - igOrganic - google - direct
+
+  const channelData = [
+    { name: 'Instagram Paid', value: paid, color: '#ec4899' },
+    { name: 'Instagram Organic', value: igOrganic, color: '#f59e0b' },
+    { name: 'Google', value: google, color: '#22d3ee' },
+    { name: 'Direct / Type-in', value: direct, color: '#6366f1' },
+    ...(other > 0 ? [{ name: 'Other', value: other, color: '#8b5cf6' }] : []),
+  ].filter(d => d.value > 0)
+
+  // Campaign ID breakdown (paid only)
+  const campaignMap = {}
+  rows.filter(r => r.trafficType === 'paid').forEach(r => {
+    const id = r.campaignId || 'unknown'
+    campaignMap[id] = (campaignMap[id] || 0) + 1
+  })
+  const campaignData = Object.entries(campaignMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, signups]) => ({ id, signups }))
+
+  // Growth over time — daily buckets, split paid vs organic
   const byDay = {}
   rows.forEach(r => {
     const d = r.signupAt || r.firstSeenAt
     if (!d) return
     const key = d.toISOString().slice(0, 10)
-    byDay[key] = (byDay[key] || 0) + 1
+    if (!byDay[key]) byDay[key] = { paid: 0, organic: 0 }
+    if (r.trafficType === 'paid') byDay[key].paid++
+    else byDay[key].organic++
   })
   const sortedDays = Object.keys(byDay).sort()
-  let cumulative = 0
+  let cumPaid = 0, cumOrganic = 0
   const growthData = sortedDays.map(date => {
-    cumulative += byDay[date]
-    return { date, daily: byDay[date], total: cumulative }
+    cumPaid += byDay[date].paid
+    cumOrganic += byDay[date].organic
+    return {
+      date,
+      daily: byDay[date].paid + byDay[date].organic,
+      dailyPaid: byDay[date].paid,
+      dailyOrganic: byDay[date].organic,
+      total: cumPaid + cumOrganic,
+      totalPaid: cumPaid,
+      totalOrganic: cumOrganic,
+    }
   })
 
   // Sources
@@ -177,6 +227,8 @@ export function computeStats(rows) {
 
   return {
     total, confirmed, withSurvey,
+    paid, igOrganic, google, direct,
+    channelData, campaignData,
     growthData, sourceData, langData, regionData, deviceData,
     cansData, ballsData, formData,
     avgCans, avgBalls,

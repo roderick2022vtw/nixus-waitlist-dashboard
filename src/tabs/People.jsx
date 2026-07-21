@@ -2,11 +2,12 @@ import { useState, useMemo } from 'react'
 import { Search } from 'lucide-react'
 
 const SOURCE_COLORS = {
-  'Instagram': 'bg-pink-500/20 text-pink-300',
+  'Instagram Paid': 'bg-pink-500/20 text-pink-300',
+  'Instagram Organic': 'bg-orange-500/20 text-orange-300',
   'Google': 'bg-blue-500/20 text-blue-300',
   'LinkedIn': 'bg-sky-500/20 text-sky-300',
   'Facebook': 'bg-indigo-500/20 text-indigo-300',
-  'Direct / Organic': 'bg-white/10 text-white/50',
+  'Direct / Type-in': 'bg-white/10 text-white/50',
 }
 
 function Badge({ label }) {
