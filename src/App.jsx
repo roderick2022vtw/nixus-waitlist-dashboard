@@ -10,7 +10,7 @@ import Geography from './tabs/Geography'
 import Survey from './tabs/Survey'
 import People from './tabs/People'
 import Ads from './tabs/Ads'
-import { Upload, BarChart2, Globe, TrendingUp, Users, ClipboardList, Megaphone, X, CheckCircle, FileDown } from 'lucide-react'
+import { Upload, BarChart2, Globe, TrendingUp, Users, ClipboardList, Megaphone, X, CheckCircle, FileDown, Share2, Zap } from 'lucide-react'
 
 const CHART_COLORS = ['#6366f1', '#22d3ee', '#a3e635', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6']
 
@@ -141,6 +141,30 @@ function UploadZone({ label, sublabel, fileName, onFile, onClear, small }) {
   )
 }
 
+function SnapshotZone({ onSnapshot }) {
+  const [dragging, setDragging] = useState(false)
+  const onDrop = useCallback(e => {
+    e.preventDefault(); setDragging(false)
+    const f = e.dataTransfer.files[0]; if (f) onSnapshot(f)
+  }, [onSnapshot])
+  return (
+    <label
+      onDrop={onDrop}
+      onDragOver={e => { e.preventDefault(); setDragging(true) }}
+      onDragLeave={() => setDragging(false)}
+      className={`cursor-pointer flex items-center justify-center gap-3 border-2 border-dashed rounded-xl px-6 py-4 transition-all col-span-2
+        ${dragging ? 'border-indigo-400 bg-indigo-500/10' : 'border-white/10 hover:border-indigo-500/40 hover:bg-indigo-500/5'}`}
+    >
+      <Zap size={18} className="text-indigo-400 flex-shrink-0" />
+      <div>
+        <p className="text-sm font-medium text-white">Load a shared snapshot</p>
+        <p className="text-xs text-white/30 mt-0.5">Drop a <code className="text-white/50">.json</code> snapshot file — opens the dashboard instantly, no CSV needed</p>
+      </div>
+      <input type="file" accept=".json" className="hidden" onChange={e => { if (e.target.files[0]) onSnapshot(e.target.files[0]) }} />
+    </label>
+  )
+}
+
 export default function App() {
   const [waitlist,  setWaitlist]  = useState(null)
   const [metaAds,   setMetaAds]   = useState(null)   // alleMETADATA (demographics + IDs)
@@ -178,6 +202,41 @@ export default function App() {
     } catch (e) {
       setErrors(er => ({ ...er, meta: e.message || String(e) }))
     } finally { setLoading(l => ({ ...l, meta: false })) }
+  }
+
+  // ── Snapshot save / load ────────────────────────────────────────────────────
+  function saveSnapshot() {
+    const snap = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      labels: loadLabels(),
+      waitlist:  waitlist  ? { rows: waitlist.rows,  stats: waitlist.stats,  fileName: waitlist.fileName  } : null,
+      metaAds:   metaAds   ? { campaigns: metaAds.campaigns,   demoRows: metaAds.demoRows,   totals: metaAds.totals,   format: metaAds.format,   fileName: metaAds.fileName   } : null,
+      campagnes: campagnes ? { campaigns: campagnes.campaigns, demoRows: campagnes.demoRows, totals: campagnes.totals, format: campagnes.format, fileName: campagnes.fileName } : null,
+    }
+    const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `nixus-snapshot-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  async function loadSnapshot(file) {
+    setLoading(l => ({ ...l, snapshot: true }))
+    setErrors(e => ({ ...e, snapshot: null }))
+    try {
+      const text = await file.text()
+      const snap = JSON.parse(text)
+      if (!snap.version) throw new Error('Not a valid NIXUS snapshot file')
+      if (snap.waitlist)  setWaitlist(snap.waitlist)
+      if (snap.metaAds)   setMetaAds(snap.metaAds)
+      if (snap.campagnes) setCampagnes(snap.campagnes)
+      if (snap.labels)    localStorage.setItem('nixus_campaign_labels', JSON.stringify(snap.labels))
+      setTab(snap.waitlist ? 'overview' : 'ads')
+    } catch (e) {
+      setErrors(er => ({ ...er, snapshot: e.message || 'Could not read snapshot' }))
+    } finally { setLoading(l => ({ ...l, snapshot: false })) }
   }
 
   // Merged meta: alleMETADATA + Campagnes click data joined by campaign name
@@ -239,7 +298,15 @@ export default function App() {
           />
           {waitlist && <span className="text-xs text-white/20">{waitlist.stats.total} signups</span>}
           {mergedMeta && <span className="text-xs text-white/20">€{mergedMeta.totals.spend.toFixed(0)} spend</span>}
-          {showDashboard && (
+          {showDashboard && (<>
+            <button
+              onClick={saveSnapshot}
+              className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white px-2.5 py-1.5 rounded-lg border border-white/10 hover:border-white/30 transition-colors"
+              title="Export current view as a snapshot file to share with the team"
+            >
+              <Share2 size={12} />
+              Share snapshot
+            </button>
             <button
               onClick={handleDownloadReport}
               className="flex items-center gap-1.5 text-xs text-indigo-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-indigo-500/30 hover:border-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 transition-colors"
@@ -247,7 +314,7 @@ export default function App() {
               <FileDown size={12} />
               Download Report
             </button>
-          )}
+          </>)}
         </div>
       </header>
 
@@ -279,8 +346,13 @@ export default function App() {
               {errors.meta  && <p className="text-xs text-red-400 text-center mt-2">{errors.meta}</p>}
             </div>
           </div>
-          <p className="text-xs text-white/20 mt-5">
-            Meta slot accepts up to 2 files (alleMETADATA + Campagnes) — format auto-detected
+          <div className="grid md:grid-cols-2 gap-4 w-full max-w-xl mt-3">
+            <SnapshotZone onSnapshot={loadSnapshot} />
+          </div>
+          {loading.snapshot && <p className="text-xs text-white/30 mt-2">Loading snapshot…</p>}
+          {errors.snapshot  && <p className="text-xs text-red-400 mt-2">{errors.snapshot}</p>}
+          <p className="text-xs text-white/20 mt-4">
+            Meta slot accepts both alleMETADATA + Campagnes files — format auto-detected
           </p>
         </div>
       ) : (
