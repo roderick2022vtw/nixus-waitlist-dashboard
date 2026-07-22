@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { parseWaitlistCSV, computeStats } from './utils/parseCSV'
 import { parseMetaCSV } from './utils/parseMetaCSV'
+import { autoFillLabels } from './utils/campaignStorage'
 import Overview from './tabs/Overview'
 import Sources from './tabs/Sources'
 import Geography from './tabs/Geography'
@@ -79,6 +80,7 @@ export default function App() {
     setErrors(e => ({ ...e, meta: null }))
     try {
       const result = await parseMetaCSV(file)
+      autoFillLabels(result.campaigns)
       setMetaAds({ ...result, fileName: file.name })
       setTab(t => t || 'ads')
     } catch (e) {
