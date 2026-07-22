@@ -1,49 +1,57 @@
 import { useState, useCallback } from 'react'
 import { parseWaitlistCSV, computeStats } from './utils/parseCSV'
-import { parseMetaCSV } from './utils/parseMetaCSV'
-import { autoFillLabels } from './utils/campaignStorage'
+import { parseMetaCSV, mergeMetaData } from './utils/parseMetaCSV'
+import { autoFillLabels, loadLabels } from './utils/campaignStorage'
+import { buildAngleStats } from './utils/parseMetaCSV'
+import { generateReport } from './utils/generateReport'
 import Overview from './tabs/Overview'
 import Sources from './tabs/Sources'
 import Geography from './tabs/Geography'
 import Survey from './tabs/Survey'
 import People from './tabs/People'
 import Ads from './tabs/Ads'
-import { Upload, BarChart2, Globe, TrendingUp, Users, ClipboardList, Megaphone, X, CheckCircle } from 'lucide-react'
+import { Upload, BarChart2, Globe, TrendingUp, Users, ClipboardList, Megaphone, X, CheckCircle, FileDown } from 'lucide-react'
 
 const CHART_COLORS = ['#6366f1', '#22d3ee', '#a3e635', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6']
 
-function UploadZone({ label, sublabel, fileName, onFile, accept = '.csv', onClear }) {
+function UploadZone({ label, sublabel, fileName, onFile, accept = '.csv', onClear, small }) {
   const [dragging, setDragging] = useState(false)
   const onDrop = useCallback(e => {
     e.preventDefault(); setDragging(false)
     const f = e.dataTransfer.files[0]; if (f) onFile(f)
   }, [onFile])
+  if (small) {
+    return (
+      <label className="cursor-pointer flex items-center gap-1.5 text-xs text-white/50 hover:text-white px-2.5 py-1.5 rounded-lg border border-white/10 hover:border-white/30 transition-colors">
+        <Upload size={12} />
+        {fileName ? `Re-upload: ${label}` : label}
+        <input type="file" accept={accept} className="hidden" onChange={e => e.target.files[0] && onFile(e.target.files[0])} />
+      </label>
+    )
+  }
   return (
     <label
       onDrop={onDrop}
       onDragOver={e => { e.preventDefault(); setDragging(true) }}
       onDragLeave={() => setDragging(false)}
-      className={`relative cursor-pointer flex flex-col items-center gap-3 border-2 border-dashed rounded-xl p-8 transition-all
+      className={`relative cursor-pointer flex flex-col items-center gap-3 border-2 border-dashed rounded-xl p-7 transition-all
         ${fileName ? 'border-green-500/40 bg-green-500/5' : dragging ? 'border-indigo-400 bg-indigo-500/10' : 'border-white/20 hover:border-white/40 hover:bg-white/5'}`}
     >
       {fileName ? (
         <>
-          <CheckCircle size={28} className="text-green-400" />
+          <CheckCircle size={26} className="text-green-400" />
           <div className="text-center">
             <p className="text-sm font-medium text-green-300">{label}</p>
             <p className="text-xs text-white/40 mt-0.5 truncate max-w-[200px]">{fileName}</p>
           </div>
-          <button
-            type="button"
-            onClick={e => { e.preventDefault(); onClear() }}
-            className="absolute top-2 right-2 text-white/20 hover:text-white/60 transition-colors"
-          >
+          <button type="button" onClick={e => { e.preventDefault(); onClear() }}
+            className="absolute top-2 right-2 text-white/20 hover:text-white/60 transition-colors">
             <X size={14} />
           </button>
         </>
       ) : (
         <>
-          <Upload size={24} className="text-white/30" />
+          <Upload size={22} className="text-white/30" />
           <div className="text-center">
             <p className="text-sm font-medium text-white">{label}</p>
             <p className="text-xs text-white/30 mt-0.5">{sublabel}</p>
@@ -56,17 +64,18 @@ function UploadZone({ label, sublabel, fileName, onFile, accept = '.csv', onClea
 }
 
 export default function App() {
-  const [waitlist, setWaitlist]   = useState(null)  // { rows, stats, fileName }
-  const [metaAds, setMetaAds]     = useState(null)  // { rows, byAngle, totals, fileName }
-  const [tab, setTab]             = useState(null)
-  const [errors, setErrors]       = useState({})
-  const [loading, setLoading]     = useState({})
+  const [waitlist,   setWaitlist]   = useState(null)
+  const [metaAds,    setMetaAds]    = useState(null)   // alleMETADATA (demographics + IDs)
+  const [campagnes,  setCampagnes]  = useState(null)   // Campagnes CSV (clicks + CPC + CTR)
+  const [tab,        setTab]        = useState(null)
+  const [errors,     setErrors]     = useState({})
+  const [loading,    setLoading]    = useState({})
 
   async function handleWaitlist(file) {
     setLoading(l => ({ ...l, waitlist: true }))
     setErrors(e => ({ ...e, waitlist: null }))
     try {
-      const rows = await parseWaitlistCSV(file)
+      const rows  = await parseWaitlistCSV(file)
       const stats = computeStats(rows)
       setWaitlist({ rows, stats, fileName: file.name })
       setTab(t => t || 'overview')
@@ -80,24 +89,66 @@ export default function App() {
     setErrors(e => ({ ...e, meta: null }))
     try {
       const result = await parseMetaCSV(file)
-      autoFillLabels(result.campaigns)
-      setMetaAds({ ...result, fileName: file.name })
+      if (result.format === 'alleMETADATA') {
+        autoFillLabels(result.campaigns)
+        setMetaAds({ ...result, fileName: file.name })
+      } else {
+        // Old Campagnes format uploaded into main meta slot — treat as campagnes
+        setCampagnes({ ...result, fileName: file.name })
+      }
       setTab(t => t || 'ads')
     } catch (e) {
       setErrors(er => ({ ...er, meta: e.message || String(e) }))
     } finally { setLoading(l => ({ ...l, meta: false })) }
   }
 
+  async function handleCampagnes(file) {
+    setLoading(l => ({ ...l, campagnes: true }))
+    setErrors(e => ({ ...e, campagnes: null }))
+    try {
+      const result = await parseMetaCSV(file)
+      setCampagnes({ ...result, fileName: file.name })
+    } catch (e) {
+      setErrors(er => ({ ...er, campagnes: e.message || String(e) }))
+    } finally { setLoading(l => ({ ...l, campagnes: false })) }
+  }
+
+  // Merged meta: alleMETADATA + Campagnes click data
+  const mergedMeta = metaAds ? mergeMetaData(metaAds, campagnes) : campagnes || null
+
   const hasWaitlist = !!waitlist
-  const hasMeta     = !!metaAds
+  const hasMeta     = !!mergedMeta
+
+  function handleDownloadReport() {
+    const labels = loadLabels()
+    const signupsByCampaign = {}
+    if (waitlist) {
+      waitlist.rows.forEach(r => {
+        if (r.trafficType !== 'paid' || !r.campaignId) return
+        signupsByCampaign[r.campaignId] = (signupsByCampaign[r.campaignId] || 0) + 1
+      })
+    }
+    const angleStats = mergedMeta
+      ? buildAngleStats(mergedMeta.campaigns, labels, signupsByCampaign)
+      : []
+
+    generateReport({
+      waitlist,
+      meta: mergedMeta,
+      angleStats,
+      signupsByCampaign,
+      labels,
+      date: new Date().toLocaleDateString('nl-NL', { year: 'numeric', month: 'long', day: 'numeric' }),
+    })
+  }
 
   const TABS = [
-    { id: 'overview', label: 'Overview',  icon: TrendingUp,   show: hasWaitlist },
-    { id: 'ads',      label: 'Ad Performance', icon: Megaphone, show: hasMeta },
-    { id: 'sources',  label: 'Sources',   icon: BarChart2,    show: hasWaitlist },
-    { id: 'geo',      label: 'Geography', icon: Globe,        show: hasWaitlist },
-    { id: 'survey',   label: 'Survey',    icon: ClipboardList, show: hasWaitlist },
-    { id: 'people',   label: 'People',    icon: Users,        show: hasWaitlist },
+    { id: 'overview', label: 'Overview',      icon: TrendingUp,    show: hasWaitlist },
+    { id: 'ads',      label: 'Ad Performance', icon: Megaphone,    show: hasMeta },
+    { id: 'sources',  label: 'Sources',        icon: BarChart2,    show: hasWaitlist },
+    { id: 'geo',      label: 'Geography',      icon: Globe,        show: hasWaitlist },
+    { id: 'survey',   label: 'Survey',         icon: ClipboardList, show: hasWaitlist },
+    { id: 'people',   label: 'People',         icon: Users,        show: hasWaitlist },
   ].filter(t => t.show)
 
   const showDashboard = hasWaitlist || hasMeta
@@ -112,30 +163,33 @@ export default function App() {
           <span className="font-semibold tracking-tight">NIXUS Marketing Dashboard</span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <label className="cursor-pointer flex items-center gap-1.5 text-xs text-white/50 hover:text-white px-2.5 py-1.5 rounded-lg border border-white/10 hover:border-white/30 transition-colors">
-            <Upload size={12} />
-            {waitlist ? 'Re-upload waitlist' : 'Waitlist CSV'}
-            <input type="file" accept=".csv" className="hidden" onChange={e => e.target.files[0] && handleWaitlist(e.target.files[0])} />
-          </label>
-          <label className="cursor-pointer flex items-center gap-1.5 text-xs text-white/50 hover:text-white px-2.5 py-1.5 rounded-lg border border-white/10 hover:border-white/30 transition-colors">
-            <Upload size={12} />
-            {metaAds ? 'Re-upload Meta ads' : 'Meta Ads CSV'}
-            <input type="file" accept=".csv" className="hidden" onChange={e => e.target.files[0] && handleMeta(e.target.files[0])} />
-          </label>
+          <UploadZone small label="Waitlist" fileName={waitlist?.fileName} onFile={handleWaitlist} onClear={() => setWaitlist(null)} />
+          <UploadZone small label="Meta Metadata (alleMETADATA)" fileName={metaAds?.fileName} onFile={handleMeta} onClear={() => setMetaAds(null)} />
+          <UploadZone small label="Meta Performance (Campagnes)" fileName={campagnes?.fileName} onFile={handleCampagnes} onClear={() => setCampagnes(null)} />
           {waitlist && <span className="text-xs text-white/20">{waitlist.stats.total} signups</span>}
-          {metaAds && <span className="text-xs text-white/20">€{metaAds.totals.spend.toFixed(0)} spend</span>}
+          {mergedMeta && <span className="text-xs text-white/20">€{mergedMeta.totals.spend.toFixed(0)} spend</span>}
+          {showDashboard && (
+            <button
+              onClick={handleDownloadReport}
+              className="flex items-center gap-1.5 text-xs text-indigo-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-indigo-500/30 hover:border-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 transition-colors"
+            >
+              <FileDown size={12} />
+              Download Report
+            </button>
+          )}
         </div>
       </header>
 
       {!showDashboard ? (
-        /* Upload screen */
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-57px)] px-6">
-          <p className="text-white/40 text-sm mb-8">Upload one or both files to get started</p>
-          <div className="grid md:grid-cols-2 gap-4 w-full max-w-xl">
+          <div className="w-8 h-8 rounded-xl bg-indigo-500 flex items-center justify-center text-sm font-bold mb-6">N</div>
+          <h1 className="text-xl font-semibold mb-1">NIXUS Marketing Dashboard</h1>
+          <p className="text-white/40 text-sm mb-8">Upload your data files to get started</p>
+          <div className="grid md:grid-cols-3 gap-4 w-full max-w-2xl">
             <div>
               <UploadZone
-                label="Waitlist CSV"
-                sublabel="Export from nixussports.com"
+                label="Waitlist Export"
+                sublabel="CSV from nixussports.com"
                 fileName={waitlist?.fileName}
                 onFile={handleWaitlist}
                 onClear={() => setWaitlist(null)}
@@ -145,8 +199,8 @@ export default function App() {
             </div>
             <div>
               <UploadZone
-                label="Meta Ads CSV"
-                sublabel="Export from Meta Ads Manager"
+                label="Meta Metadata"
+                sublabel="alleMETADATA.csv — demographics + IDs"
                 fileName={metaAds?.fileName}
                 onFile={handleMeta}
                 onClear={() => setMetaAds(null)}
@@ -154,7 +208,19 @@ export default function App() {
               {loading.meta && <p className="text-xs text-white/30 text-center mt-2">Parsing…</p>}
               {errors.meta && <p className="text-xs text-red-400 text-center mt-2">{errors.meta}</p>}
             </div>
+            <div>
+              <UploadZone
+                label="Meta Performance"
+                sublabel="Campagnes CSV — clicks, CPC, CTR"
+                fileName={campagnes?.fileName}
+                onFile={handleCampagnes}
+                onClear={() => setCampagnes(null)}
+              />
+              {loading.campagnes && <p className="text-xs text-white/30 text-center mt-2">Parsing…</p>}
+              {errors.campagnes && <p className="text-xs text-red-400 text-center mt-2">{errors.campagnes}</p>}
+            </div>
           </div>
+          <p className="text-xs text-white/20 mt-6">You can upload one file or all three — each unlocks more insights</p>
         </div>
       ) : (
         <div>
@@ -177,30 +243,10 @@ export default function App() {
             </nav>
           </div>
 
-          {/* Upload banners if one file is missing */}
-          {showDashboard && (!hasWaitlist || !hasMeta) && (
-            <div className="mx-6 mt-4">
-              {!hasWaitlist && (
-                <label className="cursor-pointer flex items-center gap-2 text-xs text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 rounded-lg px-4 py-2.5 hover:bg-indigo-500/20 transition-colors">
-                  <Upload size={13} />
-                  Also upload Waitlist CSV to unlock signups, geography, survey, and people tabs
-                  <input type="file" accept=".csv" className="hidden" onChange={e => e.target.files[0] && handleWaitlist(e.target.files[0])} />
-                </label>
-              )}
-              {!hasMeta && (
-                <label className="cursor-pointer flex items-center gap-2 text-xs text-pink-300 bg-pink-500/10 border border-pink-500/20 rounded-lg px-4 py-2.5 hover:bg-pink-500/20 transition-colors">
-                  <Upload size={13} />
-                  Also upload Meta Ads CSV to unlock ad spend, CPC, CTR, and angle ROI
-                  <input type="file" accept=".csv" className="hidden" onChange={e => e.target.files[0] && handleMeta(e.target.files[0])} />
-                </label>
-              )}
-            </div>
-          )}
-
           <div className="p-6 max-w-7xl mx-auto">
-            {activeTab === 'overview' && waitlist && <Overview stats={waitlist.stats} metaAds={metaAds} colors={CHART_COLORS} />}
-            {activeTab === 'ads'      && metaAds  && <Ads meta={metaAds} waitlist={waitlist} />}
-            {activeTab === 'sources'  && waitlist  && <Sources stats={waitlist.stats} metaAds={metaAds} colors={CHART_COLORS} />}
+            {activeTab === 'overview' && waitlist  && <Overview stats={waitlist.stats} metaAds={mergedMeta} colors={CHART_COLORS} />}
+            {activeTab === 'ads'      && mergedMeta && <Ads meta={mergedMeta} waitlist={waitlist} />}
+            {activeTab === 'sources'  && waitlist  && <Sources stats={waitlist.stats} metaAds={mergedMeta} colors={CHART_COLORS} />}
             {activeTab === 'geo'      && waitlist  && <Geography stats={waitlist.stats} colors={CHART_COLORS} />}
             {activeTab === 'survey'   && waitlist  && <Survey stats={waitlist.stats} colors={CHART_COLORS} />}
             {activeTab === 'people'   && waitlist  && <People rows={waitlist.rows} />}
