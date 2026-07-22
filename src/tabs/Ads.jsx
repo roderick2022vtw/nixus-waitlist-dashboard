@@ -177,7 +177,7 @@ export default function Ads({ meta, waitlist }) {
       {/* Top KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <KPI label="Total Spend"    value={fmt.eur0(totals.spend)}        sub={`${meta.campaigns.length} campaigns`} color="#ec4899" highlight />
-        <KPI label="Total Reach"    value={fmt.k(totals.reach)}           sub="unique accounts" />
+        <KPI label="Bereik (gezien)"  value={fmt.k(totals.reach)}           sub="unieke mensen zagen de ad" />
         {hasCPC && <KPI label="Link Clicks"  value={fmt.k(totals.clicks)}           sub="total clicks" />}
         {hasCPC && <KPI label="CPC"          value={overallCPC ? fmt.eur(overallCPC) : '—'} sub="cost per website visit" color="#6366f1" tooltip="Cost per link click — optimised by Meta" />}
         {hasCPC && <KPI label="Landing Views" value={totals.landingViews ? fmt.k(totals.landingViews) : '—'} sub="saw landing page" />}
@@ -242,7 +242,7 @@ export default function Ads({ meta, waitlist }) {
                         <span className="text-sm font-semibold capitalize w-28" style={{ color: a.color }}>{a.angle}</span>
                         <span className="text-xs text-white/20">{a.campaigns} campaign{a.campaigns !== 1 ? 's' : ''}</span>
                       </div>
-                      <div className="grid grid-cols-[1fr_90px] gap-3 items-center mb-1">
+                      <div className="grid grid-cols-[1fr_120px] gap-3 items-center mb-1">
                         {a.cpl != null ? <>
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] text-white/30 w-7">CPL</span>
@@ -251,17 +251,29 @@ export default function Ads({ meta, waitlist }) {
                             </div>
                           </div>
                           <span className="text-sm font-bold text-amber-300 text-right">{fmt.eur(a.cpl)} <span className="text-xs text-white/30">({a.signups} leads)</span></span>
-                        </> : <><div /><span className="text-xs text-white/20 text-right">no signups</span></>}
+                        </> : <><div /><span className="text-xs text-white/20 text-right">geen signups</span></>}
                       </div>
                       {a.cpc != null && (
-                        <div className="grid grid-cols-[1fr_90px] gap-3 items-center">
+                        <div className="grid grid-cols-[1fr_120px] gap-3 items-center mb-1">
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] text-white/30 w-7">CPC</span>
                             <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
                               <div className="h-full rounded-full" style={{ width: `${(a.cpc / maxCPC) * 100}%`, background: '#6366f1' }} />
                             </div>
                           </div>
-                          <span className="text-xs text-indigo-300 text-right">{fmt.eur(a.cpc)} <span className="text-white/20">/ click</span></span>
+                          <span className="text-xs text-indigo-300 text-right">{fmt.eur(a.cpc)} <span className="text-white/20">/ klik</span></span>
+                        </div>
+                      )}
+                      {a.landingViews > 0 && (
+                        <div className="grid grid-cols-[1fr_120px] gap-3 items-center">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-white/30 w-7">LP</span>
+                            <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full bg-teal-500/60"
+                                style={{ width: `${(a.landingViews / Math.max(...angleStats.map(x => x.landingViews), 1)) * 100}%` }} />
+                            </div>
+                          </div>
+                          <span className="text-xs text-teal-400 text-right">{fmt.k(a.landingViews)} <span className="text-white/20">website bezoekers</span></span>
                         </div>
                       )}
                     </div>
@@ -308,21 +320,40 @@ export default function Ads({ meta, waitlist }) {
               </ResponsiveContainer>
             </div>
 
-            {/* Reach per angle */}
-            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
-              <p className="text-sm font-medium text-white/70 mb-4">Reach per Angle</p>
-              <ResponsiveContainer width="100%" height={190}>
-                <BarChart data={angleStats} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="angle" tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={fmt.k} />
-                  <Tooltip content={<Tip fmtFn={fmt.k} />} />
-                  <Bar dataKey="reach" radius={[4,4,0,0]} name="Reach">
-                    {angleStats.map(a => <Cell key={a.angle} fill={a.color} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {/* Website visitors (landing views) per angle */}
+            {angleStats.some(a => a.landingViews > 0) ? (
+              <div className="bg-white/5 border border-teal-500/20 rounded-xl p-5">
+                <p className="text-sm font-medium text-white/70 mb-1">Website Bezoekers per Angle</p>
+                <p className="text-xs text-white/30 mb-4">Landing page views — mensen die daadwerkelijk op de site kwamen</p>
+                <ResponsiveContainer width="100%" height={190}>
+                  <BarChart data={angleStats.filter(a => a.landingViews > 0)} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis dataKey="angle" tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={fmt.k} />
+                    <Tooltip content={<Tip fmtFn={fmt.k} />} />
+                    <Bar dataKey="landingViews" radius={[4,4,0,0]} name="Website bezoekers">
+                      {angleStats.filter(a => a.landingViews > 0).map(a => <Cell key={a.angle} fill={a.color} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                <p className="text-sm font-medium text-white/70 mb-1">Bereik per Angle</p>
+                <p className="text-xs text-white/30 mb-4">Unieke mensen die de ad zagen (niet website bezoekers)</p>
+                <ResponsiveContainer width="100%" height={190}>
+                  <BarChart data={angleStats} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis dataKey="angle" tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={fmt.k} />
+                    <Tooltip content={<Tip fmtFn={fmt.k} />} />
+                    <Bar dataKey="reach" radius={[4,4,0,0]} name="Bereik">
+                      {angleStats.map(a => <Cell key={a.angle} fill={a.color} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
         </>
       )}
