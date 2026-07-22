@@ -407,7 +407,7 @@ export default function Ads({ meta, waitlist }) {
             <thead>
               <tr className="border-b border-white/10">
                 {['Campaign', 'Angle', 'Spend', 'Reach',
-                  ...(hasCPC ? ['Clicks', 'CTR', 'CPC'] : []),
+                  ...(hasCPC ? ['Clicks', 'Landing Views', 'CTR', 'CPC', 'Cost / LP view'] : []),
                   ...(waitlist ? ['Signups', 'CPL'] : [])
                 ].map(h => (
                   <th key={h} className="text-left py-2 px-3 text-xs text-white/40 font-medium uppercase tracking-wider whitespace-nowrap">{h}</th>
@@ -452,8 +452,10 @@ export default function Ads({ meta, waitlist }) {
                   <td className="py-2.5 px-3 text-white/50">{fmt.k(c.reach)}</td>
                   {hasCPC && <>
                     <td className="py-2.5 px-3 text-white/60">{c.clicks > 0 ? fmt.k(c.clicks) : <span className="text-white/20">—</span>}</td>
+                    <td className="py-2.5 px-3 text-white/60">{c.landingViews > 0 ? fmt.k(c.landingViews) : <span className="text-white/20">—</span>}</td>
                     <td className="py-2.5 px-3 text-white/60">{c.ctr > 0 ? fmt.pct(c.ctr) : <span className="text-white/20">—</span>}</td>
                     <td className="py-2.5 px-3 text-indigo-300">{c.cpc > 0 ? fmt.eur(c.cpc) : <span className="text-white/20">—</span>}</td>
+                    <td className="py-2.5 px-3 text-white/50 text-xs">{c.landingViews > 0 ? fmt.eur(c.spend / c.landingViews) : <span className="text-white/20">—</span>}</td>
                   </>}
                   {waitlist && <>
                     <td className="py-2.5 px-3">
@@ -477,8 +479,10 @@ export default function Ads({ meta, waitlist }) {
                 <td className="py-2.5 px-3 text-white/50">{fmt.k(totals.reach)}</td>
                 {hasCPC && <>
                   <td className="py-2.5 px-3 text-white/60">{totals.clicks ? fmt.k(totals.clicks) : '—'}</td>
+                  <td className="py-2.5 px-3 text-white/60">{totals.landingViews ? fmt.k(totals.landingViews) : '—'}</td>
                   <td className="py-2.5 px-3 text-white/60">{totals.impressions > 0 && totals.clicks ? fmt.pct((totals.clicks / totals.impressions) * 100) : '—'}</td>
                   <td className="py-2.5 px-3 text-indigo-300 font-bold">{overallCPC ? fmt.eur(overallCPC) : '—'}</td>
+                  <td className="py-2.5 px-3 text-white/50">{totals.landingViews > 0 ? fmt.eur(totals.spend / totals.landingViews) : '—'}</td>
                 </>}
                 {waitlist && <>
                   <td className="py-2.5 px-3 text-green-400 font-bold">{totalSignups}</td>

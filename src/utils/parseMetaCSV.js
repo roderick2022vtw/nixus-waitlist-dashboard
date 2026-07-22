@@ -125,20 +125,35 @@ function parseOldFormat(data) {
 export function mergeMetaData(metaData, campagnesData) {
   if (!campagnesData) return metaData
 
-  // Build lookup from fullName → clicks/cpc/ctr/landingViews
+  // Build lookup from fullName → aggregated Campagnes performance
   const perfByName = {}
-  campagnesData.campaigns.forEach(c => {
-    perfByName[c.fullName] = c
+  campagnesData.campaigns.forEach(c => { perfByName[c.fullName] = c })
+
+  // Group alleMETADATA campaigns by fullName to compute per-ID spend share.
+  // Same creative re-run under multiple campaign IDs shares one row in Campagnes,
+  // so we distribute clicks/landingViews proportionally by spend to avoid 2-3× overcounting.
+  const spendByName = {}
+  metaData.campaigns.forEach(c => {
+    spendByName[c.fullName] = (spendByName[c.fullName] || 0) + c.spend
   })
 
   const merged = metaData.campaigns.map(c => {
-    const perf = perfByName[c.fullName] || {}
+    const perf = perfByName[c.fullName]
+    if (!perf) return { ...c, clicks: 0, cpc: 0, ctr: 0, landingViews: 0 }
+
+    const totalSpendForName = spendByName[c.fullName] || c.spend
+    const share = totalSpendForName > 0 ? c.spend / totalSpendForName : 1
+
+    const clicks       = Math.round((perf.clicks || 0) * share)
+    const landingViews = Math.round((perf.landingViews || 0) * share)
+    const impressions  = c.impressions || 0
+
     return {
       ...c,
-      clicks:       perf.clicks       || 0,
-      cpc:          perf.cpc          || 0,
-      ctr:          perf.ctr          || 0,
-      landingViews: perf.landingViews || 0,
+      clicks,
+      landingViews,
+      cpc: clicks > 0 ? c.spend / clicks : 0,
+      ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
     }
   })
 
