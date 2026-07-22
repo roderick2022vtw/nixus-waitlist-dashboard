@@ -25,7 +25,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   )
 }
 
-export default function Overview({ stats }) {
+export default function Overview({ stats, metaAds }) {
   const { total, confirmed, withSurvey, growthData, paid, igOrganic, google, direct, channelData } = stats
   const organic = total - paid
   const paidPct = total ? Math.round((paid / total) * 100) : 0
@@ -36,10 +36,12 @@ export default function Overview({ stats }) {
   const prev7 = growthData.slice(-14, -7).reduce((s, d) => s + d.daily, 0)
   const wow = prev7 > 0 ? Math.round(((last7 - prev7) / prev7) * 100) : null
 
+  const cpl = metaAds && paid > 0 ? (metaAds.totals.spend / paid).toFixed(2) : null
+
   return (
     <div className="space-y-6">
       {/* Top KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 gap-4 ${metaAds ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
         <KPI label="Total Signups" value={total.toLocaleString()} />
         <KPI label="From Paid Ads" value={paid} sub={`${paidPct}% of total`} accent />
         <KPI label="Organic" value={organic} sub={`${100 - paidPct}% of total`} />
@@ -48,6 +50,7 @@ export default function Overview({ stats }) {
           value={last7}
           sub={wow !== null ? `${wow >= 0 ? '+' : ''}${wow}% vs prior week` : 'No prior data'}
         />
+        {metaAds && <KPI label="Cost per Lead" value={cpl ? `€${cpl}` : '—'} sub={`€${metaAds.totals.spend.toFixed(0)} total spend`} accent />}
       </div>
 
       {/* Channel breakdown bar */}
